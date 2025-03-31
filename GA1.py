@@ -6,7 +6,7 @@ import re
 import shutil
 from bs4 import BeautifulSoup
 import zipfile
-import pandas as pd
+#import pandas as pd
 import csv
 import io
 from github import Github
@@ -249,15 +249,14 @@ def count_days_in_range(start_date_str, end_date_str, target_day_name):
 
 # ====================================================================================================================
 
+import zipfile
+import os
+import numpy as np
+
 def get_answer_from_csv(zip_file_path: str) -> str:
     """
     Extracts and returns the value from the "answer" column in the extract.csv file 
-    inside a given ZIP archive.
-
-    This function:
-    1. Extracts the ZIP file.
-    2. Searches for "extract.csv".
-    3. Reads the CSV file and retrieves the value from the "answer" column.
+    inside a given ZIP archive using numpy.
 
     Args:
         zip_file_path (str): The file path to the ZIP archive.
@@ -266,15 +265,13 @@ def get_answer_from_csv(zip_file_path: str) -> str:
         str: The value in the "answer" column of extract.csv.
     """
 
+    temp_dir = "temp_unzipped"
     try:
         with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-            # Extract all files to a temporary directory
-            temp_dir = "temp_unzipped"
             if not os.path.exists(temp_dir):
                 os.makedirs(temp_dir)
             zip_ref.extractall(temp_dir)
 
-            # Find the CSV file (assuming only one CSV exists)
             csv_file_path = None
             for filename in os.listdir(temp_dir):
                 if filename.lower().endswith(".csv"):
@@ -282,61 +279,44 @@ def get_answer_from_csv(zip_file_path: str) -> str:
                     break
 
             if csv_file_path:
-                # Read the CSV using pandas
-                df = pd.read_csv(csv_file_path)
-
-                # Extract the 'answer' column
-                if 'answer' in df.columns:
-                    answers = df['answer'].tolist()
-
-                    # Clean up the temporary directory
-                    for filename in os.listdir(temp_dir):
-                        file_path = os.path.join(temp_dir, filename)
-                        os.remove(file_path)
-                    os.rmdir(temp_dir)
-
-                    return answers[0]
-                else:
-                    print("Error: 'answer' column not found in the CSV.")
-                    # Clean up the temporary directory
-                    for filename in os.listdir(temp_dir):
-                        file_path = os.path.join(temp_dir, filename)
-                        os.remove(file_path)
-                    os.rmdir(temp_dir)
-                    return None
-
+                try:
+                    # Read the CSV using numpy
+                    data = np.genfromtxt(csv_file_path, delimiter=',', dtype=str, names=True)
+                    
+                    if 'answer' in data.dtype.names:
+                        answers = data['answer']
+                        if len(answers) > 0:
+                            answer = answers[0]
+                        else:
+                            answer = None
+                    else:
+                        print("Error: 'answer' column not found in the CSV.")
+                        answer = None
+                except Exception as e:
+                    print(f"Error reading CSV: {e}")
+                    answer = None
             else:
                 print("Error: No CSV file found in the zip archive.")
-                # Clean up the temporary directory
-                for filename in os.listdir(temp_dir):
-                    file_path = os.path.join(temp_dir, filename)
-                    os.remove(file_path)
-                os.rmdir(temp_dir)
-                return None
+                answer = None
 
     except FileNotFoundError:
         print(f"Error: Zip file not found at {zip_file_path}")
-        return None
+        answer = None
     except zipfile.BadZipFile:
         print(f"Error: {zip_file_path} is not a valid zip file.")
-        return None
-    except pd.errors.EmptyDataError:
-        print("Error: The CSV file is empty.")
-        # Clean up the temporary directory
-        for filename in os.listdir(temp_dir):
-            file_path = os.path.join(temp_dir, filename)
-            os.remove(file_path)
-        os.rmdir(temp_dir)
-        return None
+        answer = None
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+        answer = None
+    finally:
         # Clean up the temporary directory
         if os.path.exists(temp_dir):
             for filename in os.listdir(temp_dir):
                 file_path = os.path.join(temp_dir, filename)
                 os.remove(file_path)
             os.rmdir(temp_dir)
-        return None
+
+    return answer if answer is not None else None
 
 # ====================================================================================================================
 

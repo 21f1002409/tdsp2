@@ -6,7 +6,6 @@ httpx
 httpie
 metaphone
 numpy
-pandas
 Pillow
 PyGithub
 python-dotenv
