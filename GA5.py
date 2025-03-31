@@ -506,9 +506,12 @@ def generate_duckdb_query(min_timestamp: str, min_useful_stars: int) -> str:
 def extract_and_transcribe(start_time, stop_time):
     """
     Generates a transcript for a specific segment of a YouTube video.
+
     This function accesses the provided YouTube URL, extracts the audio segment between the given 
     start_time and stop_time (in seconds), and uses automated speech-to-text processing to produce an 
-    accurate transcript of the spoken content in that segment.
+    accurate transcript of the spoken content in that segment. The transcription aims to capture all 
+    spoken dialogue and descriptive narration accurately, with appropriate punctuation and paragraph 
+    breaks, while excluding any extraneous noise or background commentary.
 
     Parameters:
     -----------
@@ -525,6 +528,8 @@ def extract_and_transcribe(start_time, stop_time):
 
     youtube_url = "https://youtu.be/NRntuOJu4ok"
     MP3_FILE = "downloaded_audio.mp3"
+    SEGMENT_FILE = "audio_segment.mp3"
+    DURATION = stop_time - start_time
 
     # Step 1: Download the audio from YouTube using yt-dlp
     # Define a custom logger that suppresses all output
@@ -544,8 +549,31 @@ def extract_and_transcribe(start_time, stop_time):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
 
-    # Step 2: Read and encode the entire MP3 file in base64
-    with open(MP3_FILE, "rb") as f:
+    # Step 2: Trim the MP3 file using FFmpeg via subprocess
+    # Specify the absolute path to your FFmpeg binary.
+    ffmpeg_path = os.path.join(os.getcwd(),"ffmpeg-7.0.2-amd64-static/ffmpeg")
+
+    # Build the FFmpeg command:
+    # -i: input file
+    # -ss: start time (in seconds)
+    # -t: duration (in seconds)
+    # -acodec copy: copy the audio codec without re-encoding (if this causes sync issues, remove it to force re-encoding)
+    # -y: overwrite output file without asking
+    cmd = [
+        ffmpeg_path,
+        "-i", MP3_FILE,
+        "-ss", str(start_time),
+        "-t", str(DURATION),
+        "-acodec", "libmp3lame",  # re-encode to MP3
+        SEGMENT_FILE,
+        "-y"
+    ]
+
+    # Run the command and check for errors
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Step 3: Read and encode the trimmed MP3 segment in base64
+    with open(SEGMENT_FILE, "rb") as f:
         audio_data = base64.b64encode(f.read()).decode("utf-8")
 
     # Construct the payload for the transcription API
@@ -560,7 +588,7 @@ def extract_and_transcribe(start_time, stop_time):
                             "data": audio_data
                         }
                     },
-                    {"text": f"Transcribe the segment from {start_time} to {stop_time}"}
+                    {"text": "Transcribe this"}
                 ]
             }
         ]
@@ -573,7 +601,7 @@ def extract_and_transcribe(start_time, stop_time):
         "Content-Type": "application/json"
     }
 
-    # Step 3: Make the request to the Gemini API and print the transcription output
+    # Step 4: Make the request to the Gemini API and print the transcription output
     audio_transcription = ""
     response = requests.post(url, headers=headers, data=json.dumps(data), stream=True)
     for line in response.iter_lines():
