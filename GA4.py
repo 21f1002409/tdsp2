@@ -11,6 +11,7 @@ import os
 from dotenv import load_dotenv
 from github import Github, GithubException
 import camelot
+import pandas as pd
 from llm_utils import *
 
 load_dotenv()

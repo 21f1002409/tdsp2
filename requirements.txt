@@ -14,5 +14,6 @@ rapidfuzz
 requests
 uvicorn
 yt_dlp
+pandas
 python-multipart
 uv
