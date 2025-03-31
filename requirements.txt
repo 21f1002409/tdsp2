@@ -16,4 +16,5 @@ uvicorn
 yt_dlp
 pandas
 python-multipart
+pymupdf4llm
 uv
