@@ -11,7 +11,6 @@ import os
 from dotenv import load_dotenv
 from github import Github, GithubException
 import camelot
-import pymupdf4llm
 from llm_utils import *
 
 load_dotenv()
@@ -505,14 +504,18 @@ def calculate_total_marks(filepath, group_range_str, filter_marks, main_subject,
 
 # ====================================================================================================================
 
+import os
+import json
+import requests
+
 def pdf_to_markdown(pdf_filepath):
     """
-    Converts the content of a PDF file to Markdown format and formats it using Prettier version 3.4.2.
+    Converts the content of a PDF file to Markdown format and formats it using Gemini API.
 
-    This function automates the extraction of text from a PDF document, converts the extracted content into Markdown, and ensures consistent formatting by utilizing Prettier 3.4.2. The process involves:
-    1. Extracting text from the specified PDF file.
-    2. Converting the extracted text into Markdown syntax.
-    3. Formatting the Markdown content using Prettier version 3.4.2 to maintain consistency and readability.
+    This function uses Gemini API to:
+    1. Extract text from the specified PDF file.
+    2. Convert the extracted text into Markdown syntax.
+    3. Format the Markdown content according to specified rules.
 
     Args:
         pdf_filepath (str): The file path to the PDF document that needs to be converted.
@@ -520,31 +523,101 @@ def pdf_to_markdown(pdf_filepath):
     Returns:
         str: The content of the PDF converted into formatted Markdown.
     """
+    # Step 1: Prepare the prompt for Gemini API to extract and convert PDF content
+    extraction_prompt = f"""
+    You are an advanced PDF text extractor and Markdown converter. Your task is to:
+    1. Extract the text content from the PDF file located at "{pdf_filepath}".
+    2. Convert the extracted text into Markdown format.
+    3. Ensure the Markdown includes proper headings, bullet lists, block quotes, tables, and code blocks where appropriate.
 
-    md_text = pymupdf4llm.to_markdown(pdf_filepath)
-    with open("q-pdf-to-markdown.md", "w") as f:
-        f.write(md_text)
+    Return only the extracted and converted Markdown content.
+    """
 
-    prompt = f"""
-    Please format the provided Markdown content to enhance its readability by incorporating the following elements:
+    # Step 2: Call Gemini API to extract and convert PDF content to Markdown
+    extracted_md = call_gemini_api(extraction_prompt)
 
-    - **Headings:** Use `#` for H1, `##` for H2, and `###` for H3 headings appropriately.
-    - **Block Quotes:** Apply `>` to format block quotes.
-    - **Bullet Lists:** Ensure existing bullet lists are properly formatted.
-    - **Tables:** Convert sequences of lines without bullet points into tables using the `|` character, where appropriate.
-    - **Code Blocks:** Enclose code snippets within triple backticks (```) to create fenced code blocks.
+    if not extracted_md:
+        return "Failed to extract content from PDF."
 
-    **Important:** Do not change, add, or remove any words; maintain the original order of the text. Ensure that the final formatted Markdown includes at least one instance of each of the following elements: H1 heading, H2 heading, H3 heading, block quote, table, and fenced code block.
+    # Step 3: Prepare the prompt to format the extracted Markdown
+    formatting_prompt = f"""
+    You are a Markdown formatter. Your task is to enhance the readability of the provided Markdown content by:
+    - Using `#` for H1, `##` for H2, and `###` for H3 headings appropriately.
+    - Applying `>` to format block quotes.
+    - Ensuring bullet lists are properly formatted.
+    - Converting sequences of lines without bullet points into tables using the `|` character where appropriate.
+    - Enclosing code snippets within triple backticks (```) to create fenced code blocks.
+
+    **Important:** Do not change, add, or remove any words; maintain the original order of the text. Ensure the final formatted Markdown includes at least one instance of each of the following elements: H1 heading, H2 heading, H3 heading, block quote, table, and fenced code block.
 
     Here is the content to format:
 
-    {md_text}
+    {extracted_md}
 
     Provide only the formatted Markdown output without altering the original text.
     """
 
-    response = chat_completion(prompt)
-    return response
+    # Step 4: Call Gemini API to format the extracted Markdown
+    formatted_md = call_gemini_api(formatting_prompt)
+
+    return formatted_md
+
+def call_gemini_api(prompt):
+    """
+    Sends a prompt to Gemini API and returns the response.
+
+    Args:
+        prompt (str): The prompt to send to Gemini API.
+
+    Returns:
+        str: The response from Gemini API.
+    """
+    # Gemini API endpoint
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-002:streamGenerateContent?alt=sse"
+    
+    # Headers with API key
+    headers = {
+        "X-Goog-API-Key": os.getenv("GEMINI_API_KEY"),
+        "Content-Type": "application/json"
+    }
+    
+    # Request payload
+    payload = {
+        "prompt": {
+            "text": prompt,
+            "context": "Extract text from PDF and convert to formatted Markdown."
+        },
+        "temperature": 0.0,  # Use deterministic output
+        "candidate_count": 1,
+        "max_output_tokens": 2048,
+        "top_k": 40,
+        "top_p": 0.8
+    }
+    
+    try:
+        # Send request to Gemini API
+        response = requests.post(url, headers=headers, json=payload, stream=True)
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Process the stream response
+            content = ""
+            for line in response.iter_lines():
+                if line:
+                    # Decode and parse each line of the SSE response
+                    data = json.loads(line.decode("utf-8"))
+                    if "candidates" in data:
+                        for candidate in data["candidates"]:
+                            if "content" in candidate:
+                                content += candidate["content"]
+            return content
+        else:
+            print(f"Error: Gemini API returned status code {response.status_code}")
+            print(f"Response: {response.text}")
+            return None
+    except Exception as e:
+        print(f"Error calling Gemini API: {e}")
+        return None
 
 # ====================================================================================================================
 

@@ -10,7 +10,6 @@ Pillow
 PyGithub
 python-dotenv
 PyYAML
-pymupdf4llm
 rapidfuzz
 requests
 uvicorn
