@@ -17,3 +17,5 @@ requests
 uvicorn
 yt_dlp
 python-multipart
+uv
+lxml
